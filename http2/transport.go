@@ -1998,9 +1998,7 @@ func (rl *clientConnReadLoop) processSettings(f *SettingsFrame) error {
 		case SettingMaxFrameSize:
 			cc.maxFrameSize = s.Val
 		case SettingMaxConcurrentStreams:
-			// Do not fill the connection's entire
-			// multiplexing limit to be on the safe side
-			cc.maxConcurrentStreams = s.Val - (s.Val / 10)
+			cc.maxConcurrentStreams = s.Val
 		case SettingMaxHeaderListSize:
 			cc.peerMaxHeaderListSize = uint64(s.Val)
 		case SettingInitialWindowSize:
