@@ -220,7 +220,7 @@ func (p *clientConnPool) pingConnection(key string, cc *ClientConn) {
 			}
 			return
 		}
-		time.Sleep(15 * time.Second)
+		time.Sleep(30 * time.Second)
 	}
 }
 
