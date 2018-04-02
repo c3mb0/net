@@ -44,6 +44,7 @@ type clientConnPool struct {
 	keys         map[*ClientConn][]string
 	addConnCalls map[string]*addConnCall // in-flight addConnIfNeede calls
 	ctx          context.Context
+	rrCounter    int
 }
 
 func (p *clientConnPool) GetClientConn(req *http.Request, addr string) (*ClientConn, error) {
@@ -66,7 +67,10 @@ func (p *clientConnPool) getClientConn(req *http.Request, addr string, dialOnMis
 		return cc, nil
 	}
 	p.mu.Lock()
-	for _, cc := range p.conns[addr] {
+	numConns := len(p.conns[addr])
+	for i := 0; i < numConns; i++ {
+		p.rrCounter = (p.rrCounter + 1) % numConns
+		cc := p.conns[addr][p.rrCounter]
 		if cc.CanTakeNewRequest() {
 			p.mu.Unlock()
 			return cc, nil
