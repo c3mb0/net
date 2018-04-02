@@ -7,9 +7,11 @@
 package http2
 
 import (
+	"context"
 	"crypto/tls"
 	"net/http"
 	"sync"
+	"time"
 )
 
 // ClientConnPool manages a pool of HTTP/2 client connections.
@@ -41,6 +43,7 @@ type clientConnPool struct {
 	dialing      map[string]*dialCall     // currently in-flight dials
 	keys         map[*ClientConn][]string
 	addConnCalls map[string]*addConnCall // in-flight addConnIfNeede calls
+	ctx          context.Context
 }
 
 func (p *clientConnPool) GetClientConn(req *http.Request, addr string) (*ClientConn, error) {
@@ -195,6 +198,26 @@ func (p *clientConnPool) addConnLocked(key string, cc *ClientConn) {
 	}
 	p.conns[key] = append(p.conns[key], cc)
 	p.keys[cc] = append(p.keys[cc], key)
+	go p.pingConnection(key, cc)
+}
+
+// Keep pinging to keep connections alive unless
+// terminated explicitly via cancellable context
+func (p *clientConnPool) pingConnection(key string, cc *ClientConn) {
+	for {
+		err := cc.Ping(p.ctx)
+		if err != nil {
+			if err != context.Canceled {
+				// Pinging error signifies a broken connection,
+				// initialize another one
+				p.mu.Lock()
+				p.getStartDialLocked(key)
+				p.mu.Unlock()
+			}
+			return
+		}
+		time.Sleep(15 * time.Second)
+	}
 }
 
 func (p *clientConnPool) MarkDead(cc *ClientConn) {

@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/rand"
 	"crypto/tls"
 	"errors"
@@ -101,6 +102,16 @@ type Transport struct {
 
 	connPoolOnce  sync.Once
 	connPoolOrDef ClientConnPool // non-nil version of ConnPool
+
+	// Cancellable context function to stop all ongoing pinging
+	cancelFn context.CancelFunc
+}
+
+// CeasePinging stops all ongoing pinging operations that keep
+// http2 connections alive and healthy. Must be called if a client
+// won't be used anymore.
+func (t *Transport) CeasePinging() {
+	t.cancelFn()
 }
 
 func (t *Transport) maxHeaderListSize() uint32 {
@@ -136,7 +147,9 @@ func (t *Transport) initConnPool() {
 	if t.ConnPool != nil {
 		t.connPoolOrDef = t.ConnPool
 	} else {
-		t.connPoolOrDef = &clientConnPool{t: t}
+		ctx, cancelFn := context.WithCancel(context.Background())
+		t.cancelFn = cancelFn
+		t.connPoolOrDef = &clientConnPool{t: t, ctx: ctx}
 	}
 }
 
@@ -630,8 +643,11 @@ func (cc *ClientConn) canTakeNewRequestLocked() bool {
 	if cc.singleUse && cc.nextStreamID > 1 {
 		return false
 	}
+	// Create a new connection if current streams approach
+	// the max concurrent streams limit
 	return cc.goAway == nil && !cc.closed &&
-		int64(cc.nextStreamID)+int64(cc.pendingRequests) < math.MaxInt32
+		int64(cc.nextStreamID)+int64(cc.pendingRequests) < math.MaxInt32 &&
+		int64(len(cc.streams))+1 <= int64(cc.maxConcurrentStreams)
 }
 
 // onIdleTimeout is called from a time.AfterFunc goroutine. It will
@@ -1982,7 +1998,9 @@ func (rl *clientConnReadLoop) processSettings(f *SettingsFrame) error {
 		case SettingMaxFrameSize:
 			cc.maxFrameSize = s.Val
 		case SettingMaxConcurrentStreams:
-			cc.maxConcurrentStreams = s.Val
+			// Do not fill the connection's entire
+			// multiplexing limit to be on the safe side
+			cc.maxConcurrentStreams = s.Val - (s.Val / 10)
 		case SettingMaxHeaderListSize:
 			cc.peerMaxHeaderListSize = uint64(s.Val)
 		case SettingInitialWindowSize:
