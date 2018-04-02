@@ -28,7 +28,7 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/net/http2/hpack"
+	"github.com/c3mb0/net/http2/hpack"
 	"golang.org/x/net/idna"
 	"golang.org/x/net/lex/httplex"
 )

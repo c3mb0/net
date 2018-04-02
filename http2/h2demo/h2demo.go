@@ -28,9 +28,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/c3mb0/net/http2"
 	"go4.org/syncutil/singleflight"
 	"golang.org/x/crypto/acme/autocert"
-	"golang.org/x/net/http2"
 )
 
 var (
